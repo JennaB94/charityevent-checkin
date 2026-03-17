@@ -1,18 +1,13 @@
-// firebase-sync.js - Complete Firebase Configuration & Real-Time Sync
-// Supports multi-device synchronization, offline persistence, and real-time updates
-
-// ============================================================
-// FIREBASE SDK INITIALIZATION
-// ============================================================
-
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com"
+  apiKey: "AIzaSyAVsREtbOF30frhPT9QAvQQ7s-Ekg3P4MQ",
+  authDomain: "charity-event-checkin.firebaseapp.com",
+  databaseURL: "https://charity-event-checkin-default-rtdb.firebaseio.com",
+  projectId: "charity-event-checkin",
+  storageBucket: "charity-event-checkin.firebasestorage.app",
+  messagingSenderId: "422149994231",
+  appId: "1:422149994231:web:9531f4d4b986b1ce78c5f2",
+  measurementId: "G-Z5F8CGZGK6"
 };
 
 let database, auth;
