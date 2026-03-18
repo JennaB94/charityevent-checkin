@@ -246,10 +246,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncParticipants();
     syncCheckpoints();
     
-      console.log('✅ Real-time sync listeners activated');
-    window.firebaseReady(true);  // ← ADD THIS
+    console.log('✅ Real-time sync listeners activated');
+    window.firebaseReady(true);
+    const statusEl = document.getElementById('firebase-status');
+    if (statusEl) {
+      statusEl.textContent = '🟢 Firebase connected';
+      statusEl.style.color = 'var(--accent3)';
+    }
   } else {
     console.warn('⚠️ Firebase not available - using local storage only');
-    window.firebaseReady(false);  // ← ADD THIS
+    window.firebaseReady(false);
+    const statusEl = document.getElementById('firebase-status');
+    if (statusEl) {
+      statusEl.textContent = '🔴 Offline (local only)';
+      statusEl.style.color = 'var(--accent2)';
+    }
   }
 });
