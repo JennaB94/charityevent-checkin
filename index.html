@@ -613,11 +613,22 @@ let state = {
   log: []
 };
 
-function save() {
+async function save() {
   localStorage.setItem('checkin_pro', JSON.stringify(state));
-  if (typeof saveStateToFirebase === 'function') {
-    saveStateToFirebase(state);
+  
+  // Wait for Firebase to be ready before syncing
+  if (window.firebaseReadyPromise) {
+    try {
+      await window.firebaseReadyPromise;
+    } catch (e) {
+      console.warn('Firebase not ready yet');
+    }
   }
+  
+  if (typeof saveStateToFirebase === 'function') {
+    await saveStateToFirebase(state);
+  }
+}
 }
 function load() {
   const raw = localStorage.getItem('checkin_pro');
