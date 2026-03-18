@@ -613,20 +613,10 @@ let state = {
   log: []
 };
 
-async function save() {
+function save() {
   localStorage.setItem('checkin_pro', JSON.stringify(state));
-  
-  // Wait for Firebase to be ready before syncing
-  if (window.firebaseReadyPromise) {
-    try {
-      await window.firebaseReadyPromise;
-    } catch (e) {
-      console.warn('Firebase not ready yet');
-    }
-  }
-  
   if (typeof saveStateToFirebase === 'function') {
-    await saveStateToFirebase(state);
+    saveStateToFirebase(state);
   }
 }
 function load() {
