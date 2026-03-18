@@ -629,7 +629,6 @@ async function save() {
     await saveStateToFirebase(state);
   }
 }
-}
 function load() {
   const raw = localStorage.getItem('checkin_pro');
   if (raw) {
