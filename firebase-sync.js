@@ -56,20 +56,68 @@ function syncCheckIns(callback) {
   });
 }
 
+// Real-time sync for Event
+function syncEvent() {
+  if (!database) return;
+
+  const nameInput = document.getElementById('event-name');
+  const dateInput = document.getElementById('event-date');
+  const descInput = document.getElementById('event-desc');
+  const nameDisplay = document.getElementById('event-name-display');
+
+  database.ref('event').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data && typeof state !== 'undefined') {
+      state.event = data;
+      localStorage.setItem('checkin_pro', JSON.stringify(state));
+      if (nameInput && nameInput.value !== data.name) nameInput.value = data.name;
+      if (dateInput && dateInput.value !== (data.date || '')) dateInput.value = data.date || '';
+      if (descInput && descInput.value !== (data.desc || '')) descInput.value = data.desc || '';
+      if (nameDisplay) nameDisplay.textContent = data.name;
+      console.log('✅ Event synced from Firebase:', data.name);
+    }
+  }, (error) => {
+    console.error('❌ Event sync error:', error);
+  });
+}
+
 // Real-time sync for Participants
 function syncParticipants() {
   if (!database) return;
 
-  database.ref('participants').on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data && typeof state !== 'undefined') {
-      const existingIds = new Set(state.participants.map(p => p.id));
-      Object.values(data).forEach(remote => {
-        if (!existingIds.has(remote.id)) {
-          state.participants.push(remote);
-          existingIds.add(remote.id);
-        }
-      });
+  const participantsRef = database.ref('participants');
+
+  participantsRef.on('child_added', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      if (!state.participants.find(p => p.id === remote.id)) {
+        state.participants.push(remote);
+        localStorage.setItem('checkin_pro', JSON.stringify(state));
+        if (typeof renderParticipants === 'function') renderParticipants();
+      }
+    }
+  }, (error) => {
+    console.error('❌ Participants sync error:', error);
+  });
+
+  participantsRef.on('child_changed', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      const idx = state.participants.findIndex(p => p.id === remote.id);
+      if (idx !== -1) {
+        state.participants[idx] = remote;
+        localStorage.setItem('checkin_pro', JSON.stringify(state));
+        if (typeof renderParticipants === 'function') renderParticipants();
+      }
+    }
+  }, (error) => {
+    console.error('❌ Participants sync error:', error);
+  });
+
+  participantsRef.on('child_removed', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      state.participants = state.participants.filter(p => p.id !== remote.id);
       localStorage.setItem('checkin_pro', JSON.stringify(state));
       if (typeof renderParticipants === 'function') renderParticipants();
     }
@@ -82,16 +130,41 @@ function syncParticipants() {
 function syncCheckpoints() {
   if (!database) return;
 
-  database.ref('checkpoints').on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data && typeof state !== 'undefined') {
-      const existingIds = new Set(state.checkpoints.map(c => c.id));
-      Object.values(data).forEach(remote => {
-        if (!existingIds.has(remote.id)) {
-          state.checkpoints.push(remote);
-          existingIds.add(remote.id);
-        }
-      });
+  const checkpointsRef = database.ref('checkpoints');
+
+  checkpointsRef.on('child_added', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      if (!state.checkpoints.find(c => c.id === remote.id)) {
+        state.checkpoints.push(remote);
+        localStorage.setItem('checkin_pro', JSON.stringify(state));
+        if (typeof renderCheckpoints === 'function') renderCheckpoints();
+        if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+      }
+    }
+  }, (error) => {
+    console.error('❌ Checkpoints sync error:', error);
+  });
+
+  checkpointsRef.on('child_changed', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      const idx = state.checkpoints.findIndex(c => c.id === remote.id);
+      if (idx !== -1) {
+        state.checkpoints[idx] = remote;
+        localStorage.setItem('checkin_pro', JSON.stringify(state));
+        if (typeof renderCheckpoints === 'function') renderCheckpoints();
+        if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+      }
+    }
+  }, (error) => {
+    console.error('❌ Checkpoints sync error:', error);
+  });
+
+  checkpointsRef.on('child_removed', (snapshot) => {
+    const remote = snapshot.val();
+    if (remote && typeof state !== 'undefined') {
+      state.checkpoints = state.checkpoints.filter(c => c.id !== remote.id);
       localStorage.setItem('checkin_pro', JSON.stringify(state));
       if (typeof renderCheckpoints === 'function') renderCheckpoints();
       if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
@@ -99,6 +172,64 @@ function syncCheckpoints() {
   }, (error) => {
     console.error('❌ Checkpoints sync error:', error);
   });
+}
+
+// ============================================================
+// INITIAL STATE LOAD FROM FIREBASE
+// ============================================================
+
+// Load the complete state from Firebase on page load (falls back to localStorage)
+async function loadInitialStateFromFirebase() {
+  if (!database || typeof state === 'undefined') return;
+  try {
+    const snapshot = await database.ref().once('value');
+    const data = snapshot.val();
+    if (!data) return;
+
+    if (data.event) {
+      state.event = data.event;
+      const nameInput = document.getElementById('event-name');
+      const dateInput = document.getElementById('event-date');
+      const descInput = document.getElementById('event-desc');
+      const nameDisplay = document.getElementById('event-name-display');
+      if (nameInput) nameInput.value = data.event.name || '';
+      if (dateInput) dateInput.value = data.event.date || '';
+      if (descInput) descInput.value = data.event.desc || '';
+      if (nameDisplay) nameDisplay.textContent = data.event.name || '';
+    }
+
+    if (data.participants) {
+      const remoteParticipants = Object.values(data.participants);
+      remoteParticipants.forEach(remote => {
+        const idx = state.participants.findIndex(p => p.id === remote.id);
+        if (idx === -1) {
+          state.participants.push(remote);
+        } else {
+          state.participants[idx] = remote;
+        }
+      });
+      if (typeof renderParticipants === 'function') renderParticipants();
+    }
+
+    if (data.checkpoints) {
+      const remoteCheckpoints = Object.values(data.checkpoints);
+      remoteCheckpoints.forEach(remote => {
+        const idx = state.checkpoints.findIndex(c => c.id === remote.id);
+        if (idx === -1) {
+          state.checkpoints.push(remote);
+        } else {
+          state.checkpoints[idx] = remote;
+        }
+      });
+      if (typeof renderCheckpoints === 'function') renderCheckpoints();
+      if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+    }
+
+    localStorage.setItem('checkin_pro', JSON.stringify(state));
+    console.log('✅ Initial state loaded from Firebase');
+  } catch (error) {
+    console.warn('⚠️ Could not load initial state from Firebase, using localStorage:', error);
+  }
 }
 
 // ============================================================
@@ -127,6 +258,28 @@ async function saveStateToFirebase(appState) {
     console.log('✅ State synced to Firebase');
   } catch (error) {
     console.error('❌ Error saving state to Firebase:', error);
+  }
+}
+
+// Delete a participant from Firebase by ID
+async function deleteParticipantFromFirebase(id) {
+  if (!database) return;
+  try {
+    await database.ref('participants/' + id).remove();
+    console.log('✅ Participant removed from Firebase:', id);
+  } catch (error) {
+    console.error('❌ Error removing participant from Firebase:', error);
+  }
+}
+
+// Delete a checkpoint from Firebase by ID
+async function deleteCheckpointFromFirebase(id) {
+  if (!database) return;
+  try {
+    await database.ref('checkpoints/' + id).remove();
+    console.log('✅ Checkpoint removed from Firebase:', id);
+  } catch (error) {
+    console.error('❌ Error removing checkpoint from Firebase:', error);
   }
 }
 
@@ -229,6 +382,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initBroadcastChannel();
   
   if (firebaseReady) {
+    await loadInitialStateFromFirebase();
+
+    syncEvent();
+
     syncCheckIns((checkin) => {
       if (typeof state !== 'undefined' && state) {
         // Avoid adding duplicates already in local state
