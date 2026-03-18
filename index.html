@@ -4,10 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Event Check-In System</title>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
+  <!-- Firebase SDK (compat builds required for firebase-sync.js API style) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+  <!-- Firebase sync (loaded before main script so functions are available immediately) -->
+  <script src="firebase-sync.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
@@ -416,7 +418,10 @@
 <body>
 <header>
   <div class="logo">Check<span>In</span> Pro</div>
-  <div id="event-name-display" style="font-size:13px;color:var(--muted);">No event set up</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span id="firebase-status" title="Firebase status" style="font-size:12px;color:var(--muted);">⏳ Connecting…</span>
+    <div id="event-name-display" style="font-size:13px;color:var(--muted);">No event set up</div>
+  </div>
 </header>
 
 <nav>
@@ -613,8 +618,15 @@ let state = {
   log: []
 };
 
-function save() {
+async function save() {
   localStorage.setItem('checkin_pro', JSON.stringify(state));
+  if (typeof firebaseReadyPromise !== 'undefined') {
+    try {
+      await firebaseReadyPromise;
+    } catch(e) {
+      console.warn('Firebase not ready:', e);
+    }
+  }
   if (typeof saveStateToFirebase === 'function') {
     saveStateToFirebase(state);
   }
@@ -1298,6 +1310,5 @@ function init() {
 
 init();
 </script>
-<script src="firebase-sync.js"></script>
 </body>
 </html>
