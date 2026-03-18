@@ -53,9 +53,79 @@ function syncCheckIns(callback) {
   });
 }
 
+// Real-time sync for Participants
+function syncParticipants() {
+  if (!database) return;
+
+  database.ref('participants').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data && typeof state !== 'undefined') {
+      const existingIds = new Set(state.participants.map(p => p.id));
+      Object.values(data).forEach(remote => {
+        if (!existingIds.has(remote.id)) {
+          state.participants.push(remote);
+          existingIds.add(remote.id);
+        }
+      });
+      localStorage.setItem('checkin_pro', JSON.stringify(state));
+      if (typeof renderParticipants === 'function') renderParticipants();
+    }
+  }, (error) => {
+    console.error('❌ Participants sync error:', error);
+  });
+}
+
+// Real-time sync for Checkpoints
+function syncCheckpoints() {
+  if (!database) return;
+
+  database.ref('checkpoints').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data && typeof state !== 'undefined') {
+      const existingIds = new Set(state.checkpoints.map(c => c.id));
+      Object.values(data).forEach(remote => {
+        if (!existingIds.has(remote.id)) {
+          state.checkpoints.push(remote);
+          existingIds.add(remote.id);
+        }
+      });
+      localStorage.setItem('checkin_pro', JSON.stringify(state));
+      if (typeof renderCheckpoints === 'function') renderCheckpoints();
+      if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+    }
+  }, (error) => {
+    console.error('❌ Checkpoints sync error:', error);
+  });
+}
+
 // ============================================================
 // WRITE OPERATIONS - PUSHING DATA TO FIREBASE
 // ============================================================
+
+// Save full app state to Firebase (participants, checkpoints, event)
+async function saveStateToFirebase(appState) {
+  if (!database) return;
+  try {
+    const updates = {};
+    if (appState.event) {
+      updates['event'] = appState.event;
+    }
+    if (appState.participants) {
+      appState.participants.forEach(p => {
+        updates['participants/' + p.id] = p;
+      });
+    }
+    if (appState.checkpoints) {
+      appState.checkpoints.forEach(cp => {
+        updates['checkpoints/' + cp.id] = cp;
+      });
+    }
+    await database.ref().update(updates);
+    console.log('✅ State synced to Firebase');
+  } catch (error) {
+    console.error('❌ Error saving state to Firebase:', error);
+  }
+}
 
 // Save Check-in (CRITICAL - Real-time updates)
 async function saveCheckInToFirebase(checkinData) {
@@ -158,13 +228,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (firebaseReady) {
     syncCheckIns((checkin) => {
       if (typeof state !== 'undefined' && state) {
-        state.log.push(checkin);
+        // Avoid adding duplicates already in local state
+        const existingIds = new Set(state.log.map(e => e.id));
+        if (!existingIds.has(checkin.id)) {
+          state.log.push(checkin);
+        }
         if (typeof renderDashboard === 'function') {
           renderDashboard();
         }
         broadcastCheckIn(checkin);
       }
     });
+
+    syncParticipants();
+    syncCheckpoints();
     
     console.log('✅ Real-time sync listeners activated');
   } else {
