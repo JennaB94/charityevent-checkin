@@ -9,6 +9,9 @@ const firebaseConfig = {
   appId: "1:422149994231:web:9531f4d4b986b1ce78c5f2",
   measurementId: "G-Z5F8CGZGK6"
 };
+let firebaseReadyPromise = new Promise((resolve) => {
+  window.firebaseReady = resolve;
+});
 let database, auth;
 
 async function initializeFirebase() {
@@ -243,8 +246,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncParticipants();
     syncCheckpoints();
     
-    console.log('✅ Real-time sync listeners activated');
+      console.log('✅ Real-time sync listeners activated');
+    window.firebaseReady(true);  // ← ADD THIS
   } else {
     console.warn('⚠️ Firebase not available - using local storage only');
+    window.firebaseReady(false);  // ← ADD THIS
   }
 });
