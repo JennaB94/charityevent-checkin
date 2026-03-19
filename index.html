@@ -687,6 +687,7 @@ function addCheckpoint() {
 function deleteCheckpoint(id) {
   state.checkpoints = state.checkpoints.filter(c => c.id !== id);
   save();
+  if (typeof deleteCheckpointFromFirebase === 'function') deleteCheckpointFromFirebase(id);
   renderCheckpoints();
 }
 
@@ -756,13 +757,18 @@ function importCSV() {
 function deleteParticipant(id) {
   state.participants = state.participants.filter(p => p.id !== id);
   save();
+  if (typeof deleteParticipantFromFirebase === 'function') deleteParticipantFromFirebase(id);
   renderParticipants();
 }
 
 function clearParticipants() {
   if (!confirm('Delete ALL participants? This cannot be undone.')) return;
+  const ids = state.participants.map(p => p.id);
   state.participants = [];
   save();
+  if (typeof deleteParticipantFromFirebase === 'function') {
+    ids.forEach(id => deleteParticipantFromFirebase(id));
+  }
   renderParticipants();
 }
 
