@@ -272,14 +272,37 @@ async function deleteParticipantFromFirebase(id) {
   }
 }
 
+// Save a single checkpoint to Firebase by ID
+async function saveCheckpointToFirebase(checkpoint) {
+  if (!database) {
+    syncState.pendingChanges.push({ type: 'checkpoint_add', data: checkpoint });
+    return false;
+  }
+  try {
+    await database.ref('checkpoints/' + checkpoint.id).set(checkpoint);
+    console.log('✅ Checkpoint saved to Firebase:', checkpoint.id);
+    return true;
+  } catch (error) {
+    console.error('❌ Error saving checkpoint to Firebase:', error);
+    syncState.pendingChanges.push({ type: 'checkpoint_add', data: checkpoint });
+    return false;
+  }
+}
+
 // Delete a checkpoint from Firebase by ID
 async function deleteCheckpointFromFirebase(id) {
-  if (!database) return;
+  if (!database) {
+    syncState.pendingChanges.push({ type: 'checkpoint_delete', data: id });
+    return false;
+  }
   try {
     await database.ref('checkpoints/' + id).remove();
     console.log('✅ Checkpoint removed from Firebase:', id);
+    return true;
   } catch (error) {
     console.error('❌ Error removing checkpoint from Firebase:', error);
+    syncState.pendingChanges.push({ type: 'checkpoint_delete', data: id });
+    return false;
   }
 }
 
@@ -315,14 +338,17 @@ window.addEventListener('online', async () => {
   syncState.isOnline = true;
   
   if (syncState.pendingChanges.length > 0) {
-    for (const change of syncState.pendingChanges) {
+    const pending = [...syncState.pendingChanges];
+    syncState.pendingChanges = [];
+    for (const change of pending) {
       try {
         if (change.type === 'checkin') await saveCheckInToFirebase(change.data);
+        else if (change.type === 'checkpoint_add') await saveCheckpointToFirebase(change.data);
+        else if (change.type === 'checkpoint_delete') await deleteCheckpointFromFirebase(change.data);
       } catch (error) {
         console.error('Error syncing pending change:', error);
       }
     }
-    syncState.pendingChanges = [];
     if (typeof toast === 'function') {
       toast('✅ All changes synced!', 'success');
     }
@@ -356,6 +382,22 @@ function initBroadcastChannel() {
           renderDashboard();
         }
       }
+
+      if (event.data.type === 'checkpoint_added' && typeof state !== 'undefined') {
+        if (!state.checkpoints.find(c => c.id === event.data.checkpoint.id)) {
+          state.checkpoints.push(event.data.checkpoint);
+          localStorage.setItem('checkin_pro', JSON.stringify(state));
+          if (typeof renderCheckpoints === 'function') renderCheckpoints();
+          if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+        }
+      }
+
+      if (event.data.type === 'checkpoint_deleted' && typeof state !== 'undefined') {
+        state.checkpoints = state.checkpoints.filter(c => c.id !== event.data.id);
+        localStorage.setItem('checkin_pro', JSON.stringify(state));
+        if (typeof renderCheckpoints === 'function') renderCheckpoints();
+        if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
+      }
     };
     
     console.log('✅ Broadcast Channel initialized for multi-tab sync');
@@ -368,6 +410,18 @@ function broadcastCheckIn(checkinData) {
       type: 'checkin',
       checkin: checkinData
     });
+  }
+}
+
+function broadcastCheckpointAdded(checkpoint) {
+  if (broadcastChannel) {
+    broadcastChannel.postMessage({ type: 'checkpoint_added', checkpoint });
+  }
+}
+
+function broadcastCheckpointDeleted(id) {
+  if (broadcastChannel) {
+    broadcastChannel.postMessage({ type: 'checkpoint_deleted', id });
   }
 }
 
