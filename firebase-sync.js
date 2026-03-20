@@ -225,6 +225,16 @@ async function loadInitialStateFromFirebase() {
       if (typeof populateScanCheckpoints === 'function') populateScanCheckpoints();
     }
 
+    if (data.checkins) {
+      const remoteCheckins = Object.values(data.checkins);
+      remoteCheckins.forEach(checkin => {
+        if (checkin && checkin.id && !state.log.find(e => e.id === checkin.id)) {
+          state.log.push(checkin);
+        }
+      });
+      if (typeof renderDashboard === 'function') renderDashboard();
+    }
+
     localStorage.setItem('checkin_pro', JSON.stringify(state));
     console.log('✅ Initial state loaded from Firebase');
   } catch (error) {
@@ -377,7 +387,10 @@ function initBroadcastChannel() {
       console.log('📡 Received message from other tab:', event.data);
       
       if (event.data.type === 'checkin' && typeof state !== 'undefined') {
-        state.log.push(event.data.checkin);
+        if (!state.log.find(e => e.id === event.data.checkin.id)) {
+          state.log.push(event.data.checkin);
+          localStorage.setItem('checkin_pro', JSON.stringify(state));
+        }
         if (typeof renderDashboard === 'function') {
           renderDashboard();
         }
@@ -446,6 +459,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const existingIds = new Set(state.log.map(e => e.id));
         if (!existingIds.has(checkin.id)) {
           state.log.push(checkin);
+          localStorage.setItem('checkin_pro', JSON.stringify(state));
         }
         if (typeof renderDashboard === 'function') {
           renderDashboard();
