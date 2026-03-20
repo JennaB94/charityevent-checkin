@@ -677,7 +677,19 @@ function addCheckpoint() {
   if (!name) { toast('Enter a checkpoint name.', 'error'); return; }
   const cp = { id: uid(), name, loc: document.getElementById('cp-loc').value.trim() };
   state.checkpoints.push(cp);
-  save();
+  localStorage.setItem('checkin_pro', JSON.stringify(state));
+  if (typeof saveCheckpointToFirebase === 'function') {
+    saveCheckpointToFirebase(cp).then(success => {
+      if (!success && typeof toast === 'function') {
+        toast('⚠️ Checkpoint saved locally, will sync when online', 'warning');
+      }
+    }).catch(() => {
+      if (typeof toast === 'function') {
+        toast('⚠️ Checkpoint saved locally, will sync when online', 'warning');
+      }
+    });
+  }
+  if (typeof broadcastCheckpointAdded === 'function') broadcastCheckpointAdded(cp);
   document.getElementById('cp-name').value = '';
   document.getElementById('cp-loc').value = '';
   renderCheckpoints();
@@ -686,8 +698,9 @@ function addCheckpoint() {
 
 function deleteCheckpoint(id) {
   state.checkpoints = state.checkpoints.filter(c => c.id !== id);
-  save();
+  localStorage.setItem('checkin_pro', JSON.stringify(state));
   if (typeof deleteCheckpointFromFirebase === 'function') deleteCheckpointFromFirebase(id);
+  if (typeof broadcastCheckpointDeleted === 'function') broadcastCheckpointDeleted(id);
   renderCheckpoints();
 }
 
