@@ -669,6 +669,10 @@ function saveEvent() {
     desc: document.getElementById('event-desc').value.trim()
   };
   save();
+  // Immediately sync to Firebase instead of waiting 30 seconds
+  if (typeof saveStateToFirebase === 'function') {
+    saveStateToFirebase(state);
+  }
   document.getElementById('event-name-display').textContent = name;
   toast('Event saved: ' + name, 'success');
 }
