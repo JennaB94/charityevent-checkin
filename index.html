@@ -419,6 +419,7 @@
 <header>
   <div class="logo">Check<span>In</span> Pro</div>
   <div style="display:flex;align-items:center;gap:12px;">
+    <span id="last-sync" style="font-size:11px;color:var(--muted);"></span>
     <span id="firebase-status" title="Firebase status" style="font-size:12px;color:var(--muted);">⏳ Connecting…</span>
     <div id="event-name-display" style="font-size:13px;color:var(--muted);">No event set up</div>
   </div>
@@ -689,6 +690,7 @@ function addCheckpoint() {
       }
     });
   }
+  if (typeof saveStateToFirebase === 'function') saveStateToFirebase(state);
   if (typeof broadcastCheckpointAdded === 'function') broadcastCheckpointAdded(cp);
   document.getElementById('cp-name').value = '';
   document.getElementById('cp-loc').value = '';
@@ -700,6 +702,7 @@ function deleteCheckpoint(id) {
   state.checkpoints = state.checkpoints.filter(c => c.id !== id);
   localStorage.setItem('checkin_pro', JSON.stringify(state));
   if (typeof deleteCheckpointFromFirebase === 'function') deleteCheckpointFromFirebase(id);
+  if (typeof saveStateToFirebase === 'function') saveStateToFirebase(state);
   if (typeof broadcastCheckpointDeleted === 'function') broadcastCheckpointDeleted(id);
   renderCheckpoints();
 }
@@ -1283,6 +1286,7 @@ function clearLog() {
   if (!confirm('Clear ALL check-in logs? This cannot be undone.')) return;
   state.log = [];
   save();
+  if (typeof clearCheckInsFromFirebase === 'function') clearCheckInsFromFirebase();
   renderDashboard();
   toast('Log cleared.', 'success');
 }
