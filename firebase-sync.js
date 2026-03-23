@@ -70,10 +70,13 @@ function syncEvent() {
     if (data && typeof state !== 'undefined') {
       state.event = data;
       localStorage.setItem('checkin_pro', JSON.stringify(state));
-      if (nameInput && nameInput.value !== data.name) nameInput.value = data.name;
-      if (dateInput && dateInput.value !== (data.date || '')) dateInput.value = data.date || '';
-      if (descInput && descInput.value !== (data.desc || '')) descInput.value = data.desc || '';
-      if (nameDisplay) nameDisplay.textContent = data.name;
+      
+      // ALWAYS update inputs (remove the !== check)
+      if (nameInput) nameInput.value = data.name || '';
+      if (dateInput) dateInput.value = data.date || '';
+      if (descInput) descInput.value = data.desc || '';
+      if (nameDisplay) nameDisplay.textContent = data.name || '';
+      
       console.log('✅ Event synced from Firebase:', data.name);
     }
   }, (error) => {
