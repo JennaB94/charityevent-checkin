@@ -265,11 +265,60 @@ async function saveStateToFirebase(appState) {
       });
     }
     await database.ref().update(updates);
+    syncState.lastSync = new Date();
+    updateLastSyncDisplay();
     console.log('✅ State synced to Firebase');
   } catch (error) {
     console.error('❌ Error saving state to Firebase:', error);
   }
 }
+
+// Update the "last sync" display in the UI
+function updateLastSyncDisplay() {
+  const el = document.getElementById('last-sync');
+  if (el && syncState.lastSync) {
+    el.textContent = `Synced ${syncState.lastSync.toLocaleTimeString()}`;
+  }
+}
+
+// Clear all check-ins from Firebase
+async function clearCheckInsFromFirebase() {
+  if (!database) return;
+  try {
+    await database.ref('checkins').remove();
+    console.log('✅ Check-ins cleared from Firebase');
+  } catch (error) {
+    console.error('❌ Error clearing check-ins from Firebase:', error);
+  }
+}
+
+// Periodic sync: re-push local state to Firebase every 30 seconds as a fallback
+let periodicSyncIntervalId = null;
+
+function startPeriodicSync() {
+  if (periodicSyncIntervalId !== null) return;
+  periodicSyncIntervalId = setInterval(async () => {
+    if (!database || typeof state === 'undefined' || syncState.isSyncing) return;
+    syncState.isSyncing = true;
+    try {
+      await saveStateToFirebase(state);
+      console.log('🔄 Periodic sync complete');
+    } catch (error) {
+      console.error('❌ Periodic sync failed:', error);
+    } finally {
+      syncState.isSyncing = false;
+    }
+  }, 30000);
+}
+
+function stopPeriodicSync() {
+  if (periodicSyncIntervalId !== null) {
+    clearInterval(periodicSyncIntervalId);
+    periodicSyncIntervalId = null;
+  }
+}
+
+window.addEventListener('beforeunload', stopPeriodicSync);
 
 // Delete a participant from Firebase by ID
 async function deleteParticipantFromFirebase(id) {
@@ -331,6 +380,7 @@ async function saveCheckInToFirebase(checkinData) {
     console.log('✅ Check-in saved to Firebase:', checkinData);
     syncState.lastSync = new Date();
     syncState.isSyncing = false;
+    updateLastSyncDisplay();
     return true;
   } catch (error) {
     console.error('❌ Error saving check-in:', error);
@@ -362,6 +412,11 @@ window.addEventListener('online', async () => {
     if (typeof toast === 'function') {
       toast('✅ All changes synced!', 'success');
     }
+  }
+
+  // Push full local state to Firebase after coming back online
+  if (typeof state !== 'undefined') {
+    await saveStateToFirebase(state);
   }
 });
 
@@ -471,6 +526,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncParticipants();
     syncCheckpoints();
     
+    startPeriodicSync();
     console.log('✅ Real-time sync listeners activated');
     window.firebaseReady(true);
     const statusEl = document.getElementById('firebase-status');
