@@ -669,9 +669,9 @@ function saveEvent() {
     desc: document.getElementById('event-desc').value.trim()
   };
   save();
-  if (typeof saveStateToFirebase === 'function') {
-    saveStateToFirebase(state);
-  }
+  document.getElementById('event-name-display').textContent = name;
+  toast('Event saved: ' + name, 'success');
+}
   document.getElementById('event-name-display').textContent = name;
   toast('Event saved: ' + name, 'success');
 }
@@ -747,9 +747,6 @@ function addParticipant() {
   };
   state.participants.push(p);
   save();
-  if (typeof saveStateToFirebase === 'function') {
-    saveStateToFirebase(state);
-  }
   document.getElementById('p-name').value = '';
   document.getElementById('p-email').value = '';
   document.getElementById('p-group').value = '';
@@ -783,9 +780,6 @@ function importCSV() {
     }
   });
   save();
-  if (typeof saveStateToFirebase === 'function') {
-    saveStateToFirebase(state);
-  }
   document.getElementById('csv-input').value = '';
   renderParticipants();
   toast('Imported ' + count + ' participants.', 'success');
