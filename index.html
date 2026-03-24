@@ -746,14 +746,6 @@ function addParticipant() {
   renderParticipants();
   toast('Added: ' + name, 'success');
 }
-  state.participants.push(p);
-  save();
-  document.getElementById('p-name').value = '';
-  document.getElementById('p-email').value = '';
-  document.getElementById('p-group').value = '';
-  renderParticipants();
-  toast('Added: ' + name, 'success');
-}
 
 function importCSV() {
   const raw = document.getElementById('csv-input').value.trim();
