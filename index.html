@@ -644,6 +644,15 @@ function uid() {
 }
 
 // ═══════════════════════════════════════
+// QR CODE URL GENERATION
+// ═══════════════════════════════════════
+function generateQRCheckInUrl(participantId) {
+  // Generates a check-in URL with the participant ID as a query parameter
+  const baseUrl = window.location.origin + window.location.pathname;
+  return baseUrl + '?checkin=' + encodeURIComponent(participantId);
+}
+
+// ═══════════════════════════════════════
 // TABS
 // ═══════════════════════════════════════
 function switchTab(name) {
@@ -831,7 +840,7 @@ function renderParticipants() {
         el.innerHTML = '';
         try {
           new QRCode(el, {
-            text: p.id,
+            text: generateQRCheckInUrl(p.id),
             width: 140,
             height: 140,
             colorDark: '#000000',
@@ -864,7 +873,7 @@ function openPrintModal(id) {
   setTimeout(() => {
     try {
       new QRCode(area, {
-        text: p.id,
+        text: generateQRCheckInUrl(p.id),
         width: 168,
         height: 168,
         colorDark: '#000000',
@@ -930,7 +939,7 @@ function doPrint() {
       <div class="divider"></div>
       <div class="p-name">${p.name}</div>
       <div class="p-group">${p.group}</div>
-      ${qrDataURL ? `<img class="qr-img" src="${qrDataURL}" alt="QR Code">` : `<div style="width:240px;height:240px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;color:#999;">QR Unavailable</div>`}
+      ${qrDataURL ? `<img class="qr-img" src="${qrDataURL}" alt="QR Code">` : `<div style="width:240px;height:240px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;color:#ccc;">QR Code</div>`}
       <div class="p-id">ID: ${p.id}</div>
       <script>setTimeout(() => { window.print(); }, 400); <\/script>
     </body>
@@ -999,44 +1008,38 @@ function printAllQR() {
     <body>
       <div class="no-print">
         <h1>${eventName} - All QR Codes</h1>
-        <p class="subtitle">${state.participants.length} participants</p>
-        <button class="print-btn" onclick="window.print()">Print All</button>
+        <p class="subtitle">Generated ${new Date().toLocaleString()}</p>
+        <button class="print-btn" onclick="window.print()">Print All QR Codes</button>
       </div>
-      <div class="grid" id="qr-grid"></div>
+      <div class="grid">
+        ${state.participants.map(p => `
+          <div class="qr-card">
+            <div class="qn">${p.name}</div>
+            <div class="qg">${p.group}</div>
+            <div class="qr-box" id="qr-print-${p.id}"></div>
+            <div class="qi">ID: ${p.id}</div>
+          </div>
+        `).join('')}
+      </div>
       <script>
         const participants = ${JSON.stringify(state.participants)};
-        const grid = document.getElementById('qr-grid');
-        participants.forEach(function(p) {
-          const card = document.createElement('div');
-          card.className = 'qr-card';
-          const box = document.createElement('div');
-          box.className = 'qr-box';
-          box.id = 'q-' + p.id;
-          card.innerHTML = '<div class="qn">' + p.name + '</div>';
-          card.appendChild(box);
-          card.innerHTML += '<div class="qg">' + p.group + '</div><div class="qi">ID: ' + p.id + '</div>';
-          card.insertBefore(box, card.querySelector('.qg'));
-          card.querySelector('.qn').parentNode.insertBefore(box, card.querySelector('.qn').nextSibling);
-          grid.appendChild(card);
-        });
-        // Now generate QRs
-        setTimeout(function() {
-          participants.forEach(function(p) {
-            var el = document.getElementById('q-' + p.id);
+        setTimeout(() => {
+          participants.forEach(p => {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const qrUrl = baseUrl + '?checkin=' + encodeURIComponent(p.id);
+            const el = document.getElementById('qr-print-' + p.id);
             if (el) {
-              try {
-                new QRCode(el, {
-                  text: p.id,
-                  width: 140,
-                  height: 140,
-                  colorDark: '#000000',
-                  colorLight: '#ffffff',
-                  correctLevel: QRCode.CorrectLevel.M
-                });
-              } catch(e) {}
+              new QRCode(el, {
+                text: qrUrl,
+                width: 120,
+                height: 120,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+              });
             }
           });
-        }, 200);
+        }, 100);
       <\/script>
     </body>
     </html>
@@ -1045,264 +1048,199 @@ function printAllQR() {
 }
 
 // ═══════════════════════════════════════
-// SCANNER
+// SCANNING
 // ═══════════════════════════════════════
-let scanStream = null;
-let scanInterval = null;
-const recentSessionScans = [];
-
-function populateScanCheckpoints() {
-  const sel = document.getElementById('scan-cp');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">-- Choose a checkpoint --</option>';
-  state.checkpoints.forEach(cp => {
-    const opt = document.createElement('option');
-    opt.value = cp.id;
-    opt.textContent = cp.name + (cp.loc ? ' (' + cp.loc + ')' : '');
-    if (cp.id === current) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
+let scanner = null;
 
 async function startScanner() {
-  const cp = document.getElementById('scan-cp').value;
-  if (!cp) { toast('Please select a checkpoint first.', 'error'); return; }
+  const cpSelect = document.getElementById('scan-cp').value;
+  if (!cpSelect) { toast('Please select a checkpoint first.', 'error'); return; }
+
+  const videoEl = document.getElementById('scanner-video');
+  document.getElementById('video-container').style.display = 'block';
+  document.getElementById('start-scan-btn').style.display = 'none';
+  document.getElementById('stop-scan-btn').style.display = 'inline-flex';
 
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    const video = document.getElementById('scanner-video');
-    video.srcObject = scanStream;
-    await video.play();
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    videoEl.srcObject = stream;
 
-    document.getElementById('video-container').style.display = 'block';
-    document.getElementById('start-scan-btn').style.display = 'none';
-    document.getElementById('stop-scan-btn').style.display = 'inline-flex';
-    setResult('Point camera at QR code...', 'info');
-
-    // Use BarcodeDetector if available
-    if ('BarcodeDetector' in window) {
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
-      scanInterval = setInterval(async () => {
-        try {
-          const barcodes = await detector.detect(video);
-          if (barcodes.length > 0) {
-            processQR(barcodes[0].rawValue);
-          }
-        } catch(e) {}
-      }, 500);
+    // Initialize QRScanner
+    if (typeof QrScanner !== 'undefined') {
+      scanner = new QrScanner(videoEl, handleQRScan, { returnDetailedScanResult: true, highlightScanRegion: true, highlightCodeDetails: true });
+      scanner.start();
     } else {
-      // Fallback: canvas-based scan via jsQR
-      loadJsQR(() => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        scanInterval = setInterval(() => {
-          if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = window.jsQR && window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-            if (code && code.data) processQR(code.data);
-          }
-        }, 400);
-      });
+      toast('QR Scanner library not loaded. Try manual check-in instead.', 'error');
     }
-  } catch(err) {
-    toast('Camera error: ' + err.message + ' — Try the manual check-in below.', 'error');
+  } catch (err) {
+    document.getElementById('video-container').style.display = 'none';
+    document.getElementById('start-scan-btn').style.display = 'inline-flex';
+    document.getElementById('stop-scan-btn').style.display = 'none';
+    toast('Camera access denied. Use manual check-in instead.', 'error');
   }
-}
-
-function loadJsQR(callback) {
-  if (window.jsQR) { callback(); return; }
-  const script = document.createElement('script');
-  script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
-  script.onload = callback;
-  document.head.appendChild(script);
 }
 
 function stopScanner() {
-  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
-  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  if (scanner) {
+    scanner.stop();
+    scanner = null;
+  }
+  const videoEl = document.getElementById('scanner-video');
+  if (videoEl.srcObject) {
+    videoEl.srcObject.getTracks().forEach(track => track.stop());
+  }
   document.getElementById('video-container').style.display = 'none';
   document.getElementById('start-scan-btn').style.display = 'inline-flex';
   document.getElementById('stop-scan-btn').style.display = 'none';
-  setResult('Scanner stopped.', 'info');
 }
 
-let lastScan = '';
-let lastScanTime = 0;
-
-function processQR(data) {
-  const now = Date.now();
-  if (data === lastScan && now - lastScanTime < 3000) return; // debounce
-  lastScan = data;
-  lastScanTime = now;
-
-  const p = state.participants.find(x => x.id === data);
-  const cpId = document.getElementById('scan-cp').value;
-  const cp = state.checkpoints.find(c => c.id === cpId);
-  if (!cp) { setResult('No checkpoint selected!', 'error'); return; }
-
-  if (!p) {
-    setResult('Unknown QR code: ' + data, 'error');
-    return;
+function handleQRScan(result) {
+  // Extract participant ID from the URL
+  let participantId = null;
+  
+  if (result.data) {
+    try {
+      const url = new URL(result.data);
+      participantId = url.searchParams.get('checkin');
+    } catch (e) {
+      // If not a valid URL, try using the result as ID directly
+      participantId = result.data;
+    }
   }
 
-  checkIn(p, cp);
+  if (participantId) {
+    performCheckin(participantId);
+  }
 }
 
 function manualCheckin() {
   const input = document.getElementById('manual-input').value.trim();
-  if (!input) return;
-  const cpId = document.getElementById('scan-cp').value;
-  const cp = state.checkpoints.find(c => c.id === cpId);
-  if (!cp) { toast('Select a checkpoint first.', 'error'); return; }
-
-  // Try to find by ID or name
-  const p = state.participants.find(x =>
-    x.id === input.toUpperCase() ||
-    x.name.toLowerCase() === input.toLowerCase() ||
-    x.name.toLowerCase().includes(input.toLowerCase())
-  );
-  if (!p) { setResult('Participant not found: ' + input, 'error'); return; }
-
-  checkIn(p, cp);
+  if (!input) { toast('Enter a participant ID or name.', 'error'); return; }
   document.getElementById('manual-input').value = '';
+  performCheckin(input);
 }
 
-function checkIn(p, cp) {
-  const entry = {
-    id: uid(),
+function performCheckin(identifier) {
+  const cpSelect = document.getElementById('scan-cp').value;
+  if (!cpSelect) { toast('No checkpoint selected.', 'error'); return; }
+
+  let p = state.participants.find(x => x.id === identifier || x.name.toLowerCase() === identifier.toLowerCase());
+  if (!p) { 
+    document.getElementById('scan-result').textContent = '❌ Participant not found';
+    document.getElementById('scan-result').className = 'result-error';
+    return; 
+  }
+
+  const logEntry = {
+    timestamp: new Date().toISOString(),
     participantId: p.id,
-    name: p.name,
-    group: p.group,
-    checkpoint: cp.name,
-    checkpointId: cp.id,
-    time: new Date().toISOString()
+    participantName: p.name,
+    participantGroup: p.group,
+    checkpointId: cpSelect,
+    checkpointName: state.checkpoints.find(c => c.id === cpSelect)?.name || 'Unknown'
   };
-  state.log.push(entry);
+
+  state.log.push(logEntry);
   save();
 
-  if (typeof saveCheckInToFirebase === 'function') {
-    saveCheckInToFirebase(entry);
-  }
-  if (typeof broadcastCheckIn === 'function') {
-    broadcastCheckIn(entry);
-  }
+  document.getElementById('scan-result').innerHTML = `✅ ${p.name} checked in at ${logEntry.checkpointName}`;
+  document.getElementById('scan-result').className = 'result-success';
 
-  recentSessionScans.unshift(entry);
-  setResult('CHECKED IN: ' + p.name + ' at ' + cp.name, 'success');
-  renderRecentScans();
-  toast(p.name + ' checked in at ' + cp.name, 'success');
+  document.getElementById('recent-scans').style.display = 'block';
+  const recentList = document.getElementById('recent-list');
+  recentList.innerHTML = state.log.slice(-5).reverse().map(log => `
+    <div style="padding:10px;border-radius:6px;background:var(--surface2);margin-bottom:8px;font-size:13px;">
+      <strong>${log.participantName}</strong> → ${log.checkpointName}<br/>
+      <span style="color:var(--muted);font-size:11px;">${new Date(log.timestamp).toLocaleTimeString()}</span>
+    </div>
+  `).join('');
 }
 
-function setResult(msg, type) {
-  const el = document.getElementById('scan-result');
-  el.className = 'result-' + type;
-  el.textContent = msg;
-}
-
-function renderRecentScans() {
-  const wrap = document.getElementById('recent-scans');
-  const list = document.getElementById('recent-list');
-  wrap.style.display = 'block';
-  list.innerHTML = recentSessionScans.slice(0,10).map(e => {
-    const t = new Date(e.time);
-    const timeStr = t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    return `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;">
-        <div>
-          <span style="font-weight:600;font-size:14px;">${e.name}</span>
-          <span class="tag tag-blue" style="margin-left:8px;font-size:11px;">${e.checkpoint}</span>
-        </div>
-        <span style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;">${timeStr}</span>
-      </div>
-    `;
-  }).join('');
+function populateScanCheckpoints() {
+  const cpSelect = document.getElementById('scan-cp');
+  cpSelect.innerHTML = '<option value="">-- Choose a checkpoint --</option>' +
+    state.checkpoints.map(cp => `<option value="${cp.id}">${cp.name}</option>`).join('');
 }
 
 // ═══════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════
 function renderDashboard() {
-  const log = state.log;
-  const uniqueIds = [...new Set(log.map(e => e.participantId))];
-  const activeCheckpoints = [...new Set(log.map(e => e.checkpointId))];
-  const notCheckedIn = state.participants.filter(p => !uniqueIds.includes(p.id)).length;
+  const totalCheckins = state.log.length;
+  const uniqueParticipants = new Set(state.log.map(l => l.participantId)).size;
+  const activeCheckpoints = new Set(state.log.map(l => l.checkpointId)).size;
+  const notCheckedIn = state.participants.length - uniqueParticipants;
 
-  document.getElementById('stat-total').textContent = log.length;
-  document.getElementById('stat-unique').textContent = uniqueIds.length;
-  document.getElementById('stat-checkpoints').textContent = activeCheckpoints.length;
-  document.getElementById('stat-pending').textContent = notCheckedIn;
-
-  // Populate filter
-  const filterSel = document.getElementById('filter-cp');
-  const curFilter = filterSel.value;
-  filterSel.innerHTML = '<option value="">All Checkpoints</option>';
-  state.checkpoints.forEach(cp => {
-    const opt = document.createElement('option');
-    opt.value = cp.id;
-    opt.textContent = cp.name;
-    if (cp.id === curFilter) opt.selected = true;
-    filterSel.appendChild(opt);
-  });
+  document.getElementById('stat-total').textContent = totalCheckins;
+  document.getElementById('stat-unique').textContent = uniqueParticipants;
+  document.getElementById('stat-checkpoints').textContent = activeCheckpoints;
+  document.getElementById('stat-pending').textContent = Math.max(0, notCheckedIn);
 
   renderLog();
 }
 
 function renderLog() {
-  const cpFilter = document.getElementById('filter-cp').value;
-  const nameFilter = (document.getElementById('filter-name')?.value || '').toLowerCase();
-
-  let entries = [...state.log].reverse();
-  if (cpFilter) entries = entries.filter(e => e.checkpointId === cpFilter);
-  if (nameFilter) entries = entries.filter(e => e.name.toLowerCase().includes(nameFilter));
-
   const tbody = document.getElementById('log-tbody');
-  if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No check-ins match the filter.</td></tr>';
+  const filterCp = document.getElementById('filter-cp').value;
+  const filterName = (document.getElementById('filter-name').value || '').toLowerCase();
+
+  let filtered = state.log;
+  if (filterCp) filtered = filtered.filter(l => l.checkpointId === filterCp);
+  if (filterName) filtered = filtered.filter(l => l.participantName.toLowerCase().includes(filterName));
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No records match your filter.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = entries.map((e, i) => {
-    const t = new Date(e.time);
-    const timeStr = t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    return `
-      <tr>
-        <td style="color:var(--muted);font-family:'DM Mono',monospace;">${entries.length - i}</td>
-        <td style="font-weight:500;">${e.name}</td>
-        <td><span class="tag tag-blue">${e.group}</span></td>
-        <td><span class="tag tag-green">${e.checkpoint}</span></td>
-        <td style="font-family:'DM Mono',monospace;font-size:12px;">${timeStr}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">${e.participantId}</td>
-      </tr>
-    `;
-  }).join('');
-}
+  tbody.innerHTML = filtered.reverse().map((log, i) => `
+    <tr>
+      <td>${filtered.length - i}</td>
+      <td>${log.participantName}</td>
+      <td>${log.participantGroup}</td>
+      <td>${log.checkpointName}</td>
+      <td>${new Date(log.timestamp).toLocaleTimeString()}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;">${log.participantId}</td>
+    </tr>
+  `).join('');
 
-function clearLog() {
-  if (!confirm('Clear ALL check-in logs? This cannot be undone.')) return;
-  state.log = [];
-  save();
-  if (typeof clearCheckInsFromFirebase === 'function') clearCheckInsFromFirebase();
-  renderDashboard();
-  toast('Log cleared.', 'success');
+  // Update checkpoint filter options
+  const cpSelect = document.getElementById('filter-cp');
+  const currentValue = cpSelect.value;
+  cpSelect.innerHTML = '<option value="">All Checkpoints</option>' +
+    state.checkpoints.map(cp => `<option value="${cp.id}" ${cp.id === currentValue ? 'selected' : ''}>${cp.name}</option>`).join('');
+  cpSelect.value = currentValue;
 }
 
 function exportCSV() {
-  if (!state.log.length) { toast('No data to export.', 'error'); return; }
-  const header = 'Name,Group,Checkpoint,Time,ParticipantID\n';
-  const rows = state.log.map(e =>
-    `"${e.name}","${e.group}","${e.checkpoint}","${new Date(e.time).toLocaleString()}","${e.participantId}"`
-  ).join('\n');
-  const blob = new Blob([header + rows], { type: 'text/csv' });
+  if (!state.log.length) { toast('No check-ins to export.', 'error'); return; }
+
+  const headers = ['#', 'Name', 'Group', 'Checkpoint', 'Timestamp', 'Participant ID'];
+  const rows = state.log.map((log, i) => [
+    i + 1,
+    log.participantName,
+    log.participantGroup,
+    log.checkpointName,
+    new Date(log.timestamp).toLocaleString(),
+    log.participantId
+  ]);
+
+  let csv = headers.join(',') + '\n';
+  rows.forEach(row => csv += row.map(cell => `"${cell}"`).join(',') + '\n');
+
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'checkin_log_' + Date.now() + '.csv';
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'checkin-log_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
-  toast('CSV exported!', 'success');
+  toast('Log exported!', 'success');
+}
+
+function clearLog() {
+  if (!confirm('Delete ALL check-in records? This cannot be undone.')) return;
+  state.log = [];
+  save();
+  renderDashboard();
+  toast('Log cleared.', 'success');
 }
 
 // ═══════════════════════════════════════
@@ -1311,27 +1249,23 @@ function exportCSV() {
 function toast(msg, type = 'info') {
   const el = document.getElementById('toast');
   el.textContent = msg;
-  el.style.borderColor = type === 'success' ? 'rgba(67,233,123,0.4)' : type === 'error' ? 'rgba(255,107,107,0.4)' : 'var(--border)';
-  el.style.color = type === 'success' ? 'var(--accent3)' : type === 'error' ? 'var(--accent2)' : 'var(--text)';
-  el.classList.add('show');
+  el.className = 'show';
+  if (type === 'error') el.style.background = 'rgba(255,107,107,0.15)';
+  else if (type === 'success') el.style.background = 'rgba(67,233,123,0.15)';
+  else el.style.background = 'var(--surface)';
   setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 // ═══════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════
-function init() {
+window.addEventListener('DOMContentLoaded', () => {
   load();
-  if (state.event) {
-    document.getElementById('event-name').value = state.event.name;
-    document.getElementById('event-date').value = state.event.date || '';
-    document.getElementById('event-desc').value = state.event.desc || '';
-    document.getElementById('event-name-display').textContent = state.event.name;
-  }
+  if (state.event) document.getElementById('event-name-display').textContent = state.event.name;
   renderCheckpoints();
-}
-
-init();
+  renderParticipants();
+  renderDashboard();
+});
 </script>
 </body>
 </html>
