@@ -665,6 +665,7 @@ function uid() {
 }
 
 // ═══════════════════════════════════════
+<<<<<<< HEAD
 // QR CODE URL GENERATION
 // ═══════════════════════════════════════
 function generateQRCheckInUrl(participantId) {
@@ -697,6 +698,8 @@ function handleQRUrlParameter() {
 }
 
 // ═══════════════════════════════════════
+=======
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
 // TABS
 // ═══════════════════════════════════════
 function switchTab(name) {
@@ -884,7 +887,7 @@ function renderParticipants() {
         el.innerHTML = '';
         try {
           new QRCode(el, {
-            text: generateQRCheckInUrl(p.id),
+            text: p.id,
             width: 140,
             height: 140,
             colorDark: '#000000',
@@ -922,7 +925,11 @@ function openPrintModal(id) {
   setTimeout(() => {
     try {
       new QRCode(area, {
+<<<<<<< HEAD
         text: qrUrl,
+=======
+        text: p.id,
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
         width: 168,
         height: 168,
         colorDark: '#000000',
@@ -997,7 +1004,11 @@ function doPrint() {
       <div class="divider"></div>
       <div class="p-name">${p.name}</div>
       <div class="p-group">${p.group}</div>
+<<<<<<< HEAD
       ${qrDataURL ? `<img class="qr-img" src="${qrDataURL}" alt="QR Code">` : `<div style="width:240px;height:240px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;">QR Code</div>`}
+=======
+      ${qrDataURL ? `<img class="qr-img" src="${qrDataURL}" alt="QR Code">` : `<div style="width:240px;height:240px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;color:#999;">QR Unavailable</div>`}
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
       <div class="p-id">ID: ${p.id}</div>
       <script>setTimeout(() => { window.print(); }, 400); <\/script>
     </body>
@@ -1066,6 +1077,7 @@ function printAllQR() {
     <body>
       <div class="no-print">
         <h1>${eventName} - All QR Codes</h1>
+<<<<<<< HEAD
         <p class="subtitle">Scan any code to check in</p>
         <button class="print-btn" onclick="window.print();">Print All Codes</button>
       </div>
@@ -1078,8 +1090,14 @@ function printAllQR() {
             <div class="qi">ID: ${p.id}</div>
           </div>
         `).join('')}
+=======
+        <p class="subtitle">${state.participants.length} participants</p>
+        <button class="print-btn" onclick="window.print()">Print All</button>
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
       </div>
+      <div class="grid" id="qr-grid"></div>
       <script>
+<<<<<<< HEAD
         // Generate QR codes
         ${state.participants.map(p => `
           new QRCode(document.getElementById('qr-${p.id}'), {
@@ -1091,6 +1109,41 @@ function printAllQR() {
             correctLevel: QRCode.CorrectLevel.M
           });
         `).join('')}
+=======
+        const participants = ${JSON.stringify(state.participants)};
+        const grid = document.getElementById('qr-grid');
+        participants.forEach(function(p) {
+          const card = document.createElement('div');
+          card.className = 'qr-card';
+          const box = document.createElement('div');
+          box.className = 'qr-box';
+          box.id = 'q-' + p.id;
+          card.innerHTML = '<div class="qn">' + p.name + '</div>';
+          card.appendChild(box);
+          card.innerHTML += '<div class="qg">' + p.group + '</div><div class="qi">ID: ' + p.id + '</div>';
+          card.insertBefore(box, card.querySelector('.qg'));
+          card.querySelector('.qn').parentNode.insertBefore(box, card.querySelector('.qn').nextSibling);
+          grid.appendChild(card);
+        });
+        // Now generate QRs
+        setTimeout(function() {
+          participants.forEach(function(p) {
+            var el = document.getElementById('q-' + p.id);
+            if (el) {
+              try {
+                new QRCode(el, {
+                  text: p.id,
+                  width: 140,
+                  height: 140,
+                  colorDark: '#000000',
+                  colorLight: '#ffffff',
+                  correctLevel: QRCode.CorrectLevel.M
+                });
+              } catch(e) {}
+            }
+          });
+        }, 200);
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
       <\/script>
     </body>
     </html>
@@ -1099,6 +1152,7 @@ function printAllQR() {
 }
 
 // ═══════════════════════════════════════
+<<<<<<< HEAD
 // SCANNER / SCAN TAB
 // ═══════════════════════════════════════
 let scannerActive = false;
@@ -1165,11 +1219,95 @@ function stopScanner() {
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(track => track.stop());
   }
+=======
+// SCANNER
+// ═══════════════════════════════════════
+let scanStream = null;
+let scanInterval = null;
+const recentSessionScans = [];
+
+function populateScanCheckpoints() {
+  const sel = document.getElementById('scan-cp');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- Choose a checkpoint --</option>';
+  state.checkpoints.forEach(cp => {
+    const opt = document.createElement('option');
+    opt.value = cp.id;
+    opt.textContent = cp.name + (cp.loc ? ' (' + cp.loc + ')' : '');
+    if (cp.id === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function startScanner() {
+  const cp = document.getElementById('scan-cp').value;
+  if (!cp) { toast('Please select a checkpoint first.', 'error'); return; }
+
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('scanner-video');
+    video.srcObject = scanStream;
+    await video.play();
+
+    document.getElementById('video-container').style.display = 'block';
+    document.getElementById('start-scan-btn').style.display = 'none';
+    document.getElementById('stop-scan-btn').style.display = 'inline-flex';
+    setResult('Point camera at QR code...', 'info');
+
+    // Use BarcodeDetector if available
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      scanInterval = setInterval(async () => {
+        try {
+          const barcodes = await detector.detect(video);
+          if (barcodes.length > 0) {
+            processQR(barcodes[0].rawValue);
+          }
+        } catch(e) {}
+      }, 500);
+    } else {
+      // Fallback: canvas-based scan via jsQR
+      loadJsQR(() => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        scanInterval = setInterval(() => {
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = window.jsQR && window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+            if (code && code.data) processQR(code.data);
+          }
+        }, 400);
+      });
+    }
+  } catch(err) {
+    toast('Camera error: ' + err.message + ' — Try the manual check-in below.', 'error');
+  }
+}
+
+function loadJsQR(callback) {
+  if (window.jsQR) { callback(); return; }
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+  script.onload = callback;
+  document.head.appendChild(script);
+}
+
+function stopScanner() {
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
   document.getElementById('video-container').style.display = 'none';
   document.getElementById('start-scan-btn').style.display = 'inline-flex';
   document.getElementById('stop-scan-btn').style.display = 'none';
+  setResult('Scanner stopped.', 'info');
 }
 
+<<<<<<< HEAD
 function manualCheckin(scannedId = null) {
   const cp = document.getElementById('scan-cp').value;
   if (!cp) { toast('Select a checkpoint first.', 'error'); return; }
@@ -1211,12 +1349,105 @@ function populateScanCheckpoints() {
   const sel = document.getElementById('scan-cp');
   sel.innerHTML = '<option value="">-- Choose a checkpoint --</option>' +
     state.checkpoints.map(cp => `<option value="${cp.id}">${cp.name}${cp.loc ? ' (' + cp.loc + ')' : ''}</option>`).join('');
+=======
+let lastScan = '';
+let lastScanTime = 0;
+
+function processQR(data) {
+  const now = Date.now();
+  if (data === lastScan && now - lastScanTime < 3000) return; // debounce
+  lastScan = data;
+  lastScanTime = now;
+
+  const p = state.participants.find(x => x.id === data);
+  const cpId = document.getElementById('scan-cp').value;
+  const cp = state.checkpoints.find(c => c.id === cpId);
+  if (!cp) { setResult('No checkpoint selected!', 'error'); return; }
+
+  if (!p) {
+    setResult('Unknown QR code: ' + data, 'error');
+    return;
+  }
+
+  checkIn(p, cp);
+}
+
+function manualCheckin() {
+  const input = document.getElementById('manual-input').value.trim();
+  if (!input) return;
+  const cpId = document.getElementById('scan-cp').value;
+  const cp = state.checkpoints.find(c => c.id === cpId);
+  if (!cp) { toast('Select a checkpoint first.', 'error'); return; }
+
+  // Try to find by ID or name
+  const p = state.participants.find(x =>
+    x.id === input.toUpperCase() ||
+    x.name.toLowerCase() === input.toLowerCase() ||
+    x.name.toLowerCase().includes(input.toLowerCase())
+  );
+  if (!p) { setResult('Participant not found: ' + input, 'error'); return; }
+
+  checkIn(p, cp);
+  document.getElementById('manual-input').value = '';
+}
+
+function checkIn(p, cp) {
+  const entry = {
+    id: uid(),
+    participantId: p.id,
+    name: p.name,
+    group: p.group,
+    checkpoint: cp.name,
+    checkpointId: cp.id,
+    time: new Date().toISOString()
+  };
+  state.log.push(entry);
+  save();
+
+  if (typeof saveCheckInToFirebase === 'function') {
+    saveCheckInToFirebase(entry);
+  }
+  if (typeof broadcastCheckIn === 'function') {
+    broadcastCheckIn(entry);
+  }
+
+  recentSessionScans.unshift(entry);
+  setResult('CHECKED IN: ' + p.name + ' at ' + cp.name, 'success');
+  renderRecentScans();
+  toast(p.name + ' checked in at ' + cp.name, 'success');
+}
+
+function setResult(msg, type) {
+  const el = document.getElementById('scan-result');
+  el.className = 'result-' + type;
+  el.textContent = msg;
+}
+
+function renderRecentScans() {
+  const wrap = document.getElementById('recent-scans');
+  const list = document.getElementById('recent-list');
+  wrap.style.display = 'block';
+  list.innerHTML = recentSessionScans.slice(0,10).map(e => {
+    const t = new Date(e.time);
+    const timeStr = t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;">
+        <div>
+          <span style="font-weight:600;font-size:14px;">${e.name}</span>
+          <span class="tag tag-blue" style="margin-left:8px;font-size:11px;">${e.checkpoint}</span>
+        </div>
+        <span style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;">${timeStr}</span>
+      </div>
+    `;
+  }).join('');
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
 }
 
 // ═══════════════════════════════════════
 // DASHBOARD / REPORTING
 // ═══════════════════════════════════════
 function renderDashboard() {
+<<<<<<< HEAD
   const uniqueParticipants = new Set(state.log.map(l => l.pId));
   const checkpointSet = new Set(state.log.map(l => l.cpId));
   const notCheckedIn = state.participants.filter(p => !uniqueParticipants.has(p.id)).length;
@@ -1225,12 +1456,43 @@ function renderDashboard() {
   document.getElementById('stat-unique').textContent = uniqueParticipants.size;
   document.getElementById('stat-checkpoints').textContent = checkpointSet.size;
   document.getElementById('stat-pending').textContent = notCheckedIn;
+=======
+  const log = state.log;
+  const uniqueIds = [...new Set(log.map(e => e.participantId))];
+  const activeCheckpoints = [...new Set(log.map(e => e.checkpointId))];
+  const notCheckedIn = state.participants.filter(p => !uniqueIds.includes(p.id)).length;
+
+  document.getElementById('stat-total').textContent = log.length;
+  document.getElementById('stat-unique').textContent = uniqueIds.length;
+  document.getElementById('stat-checkpoints').textContent = activeCheckpoints.length;
+  document.getElementById('stat-pending').textContent = notCheckedIn;
+
+  // Populate filter
+  const filterSel = document.getElementById('filter-cp');
+  const curFilter = filterSel.value;
+  filterSel.innerHTML = '<option value="">All Checkpoints</option>';
+  state.checkpoints.forEach(cp => {
+    const opt = document.createElement('option');
+    opt.value = cp.id;
+    opt.textContent = cp.name;
+    if (cp.id === curFilter) opt.selected = true;
+    filterSel.appendChild(opt);
+  });
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
 
   renderLog();
 }
 
 function renderLog() {
+  const cpFilter = document.getElementById('filter-cp').value;
+  const nameFilter = (document.getElementById('filter-name')?.value || '').toLowerCase();
+
+  let entries = [...state.log].reverse();
+  if (cpFilter) entries = entries.filter(e => e.checkpointId === cpFilter);
+  if (nameFilter) entries = entries.filter(e => e.name.toLowerCase().includes(nameFilter));
+
   const tbody = document.getElementById('log-tbody');
+<<<<<<< HEAD
   const cpFilter = document.getElementById('filter-cp').value;
   const nameFilter = (document.getElementById('filter-name').value || '').toLowerCase();
 
@@ -1280,8 +1542,50 @@ function clearLog() {
   state.log = [];
   save();
   renderLog();
+=======
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No check-ins match the filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = entries.map((e, i) => {
+    const t = new Date(e.time);
+    const timeStr = t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return `
+      <tr>
+        <td style="color:var(--muted);font-family:'DM Mono',monospace;">${entries.length - i}</td>
+        <td style="font-weight:500;">${e.name}</td>
+        <td><span class="tag tag-blue">${e.group}</span></td>
+        <td><span class="tag tag-green">${e.checkpoint}</span></td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">${timeStr}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">${e.participantId}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function clearLog() {
+  if (!confirm('Clear ALL check-in logs? This cannot be undone.')) return;
+  state.log = [];
+  save();
+  if (typeof clearCheckInsFromFirebase === 'function') clearCheckInsFromFirebase();
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
   renderDashboard();
   toast('Log cleared.', 'success');
+}
+
+function exportCSV() {
+  if (!state.log.length) { toast('No data to export.', 'error'); return; }
+  const header = 'Name,Group,Checkpoint,Time,ParticipantID\n';
+  const rows = state.log.map(e =>
+    `"${e.name}","${e.group}","${e.checkpoint}","${new Date(e.time).toLocaleString()}","${e.participantId}"`
+  ).join('\n');
+  const blob = new Blob([header + rows], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'checkin_log_' + Date.now() + '.csv';
+  a.click();
+  toast('CSV exported!', 'success');
 }
 
 // ═══════════════════════════════════════
@@ -1290,8 +1594,12 @@ function clearLog() {
 function toast(msg, type = 'info') {
   const el = document.getElementById('toast');
   el.textContent = msg;
+<<<<<<< HEAD
   el.style.borderColor = type === 'success' ? 'var(--accent3)' : type === 'error' ? 'var(--accent2)' : 'var(--border)';
   el.style.backgroundColor = type === 'success' ? 'rgba(67,233,123,0.1)' : type === 'error' ? 'rgba(255,107,107,0.1)' : 'var(--surface)';
+=======
+  el.style.borderColor = type === 'success' ? 'rgba(67,233,123,0.4)' : type === 'error' ? 'rgba(255,107,107,0.4)' : 'var(--border)';
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
   el.style.color = type === 'success' ? 'var(--accent3)' : type === 'error' ? 'var(--accent2)' : 'var(--text)';
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3000);
@@ -1300,9 +1608,24 @@ function toast(msg, type = 'info') {
 // ═══════════════════════════════════════
 // INITIALIZATION
 // ═══════════════════════════════════════
+<<<<<<< HEAD
 load();
 renderCheckpoints();
 handleQRUrlParameter();
+=======
+function init() {
+  load();
+  if (state.event) {
+    document.getElementById('event-name').value = state.event.name;
+    document.getElementById('event-date').value = state.event.date || '';
+    document.getElementById('event-desc').value = state.event.desc || '';
+    document.getElementById('event-name-display').textContent = state.event.name;
+  }
+  renderCheckpoints();
+}
+
+init();
+>>>>>>> parent of 502080b (Update QR codes to include URL links instead of just IDs)
 </script>
 </body>
 </html>
