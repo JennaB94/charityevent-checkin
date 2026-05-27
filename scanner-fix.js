@@ -1,59 +1,140 @@
-let isScanning = false;
+let scannerStream = null;
+let scanLoopActive = false;
 
-function startQRScanning(cpId) {
-  if (isScanning) return;
-  isScanning = true;
+async function startScanner() {
+  const cpId = document.getElementById("scan-cp").value;
+  const result = document.getElementById("scan-result");
 
-  const video = document.getElementById('scanner-video');
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  if (!cpId) {
+    result.textContent = "Please select a checkpoint first.";
+    result.className = "result-error";
+    return;
+  }
 
-  const scan = () => {
-    if (!scannerStream) { isScanning = false; return; }
-    
-    try {
-      // Check if video is ready
-      if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-        requestAnimationFrame(scan);
-        return;
-      }
+  const video = document.getElementById("scanner-video");
+  document.getElementById("video-container").style.display = "block";
+  document.getElementById("start-scan-btn").style.display = "none";
+  document.getElementById("stop-scan-btn").style.display = "inline-block";
 
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+
+    video.srcObject = scannerStream;
+    await video.play();
+
+    result.textContent = "Scanning… hold the QR code in the frame.";
+    result.className = "result-info";
+
+    scanLoopActive = true;
+    scanQRCode(cpId);
+  } catch (err) {
+    result.textContent = "Camera could not start. Check browser camera permissions.";
+    result.className = "result-error";
+    stopScanner();
+  }
+}
+
+function stopScanner() {
+  scanLoopActive = false;
+
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(track => track.stop());
+    scannerStream = null;
+  }
+
+  document.getElementById("video-container").style.display = "none";
+  document.getElementById("start-scan-btn").style.display = "inline-block";
+  document.getElementById("stop-scan-btn").style.display = "none";
+}
+
+function scanQRCode(cpId) {
+  const video = document.getElementById("scanner-video");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  function tick() {
+    if (!scanLoopActive || !scannerStream) return;
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      
-      if (canvas.width === 0 || canvas.height === 0) {
-        requestAnimationFrame(scan);
-        return;
-      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      ctx.drawImage(video, 0, 0);
-
-      // Get image data and scan for QR code
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      // Check if jsQR is available
-      if (typeof jsQR === 'undefined') {
-        console.error('jsQR library not loaded');
-        document.getElementById('scan-result').textContent = '❌ QR Scanner library failed to load. Please refresh the page.';
-        document.getElementById('scan-result').className = 'result-error';
-        isScanning = false;
-        return;
-      }
-
       const code = jsQR(imageData.data, canvas.width, canvas.height);
-      
-      if (code) {
-        const participantId = code.data;
-        performCheckin(participantId, cpId);
+
+      if (code && code.data) {
+        manualCheckin(code.data.trim());
         stopScanner();
         return;
       }
-    } catch(e) {
-      console.error('QR Scan error:', e);
     }
 
-    requestAnimationFrame(scan);
+    requestAnimationFrame(tick);
+  }
+
+  tick();
+}
+
+function manualCheckin(scannedValue) {
+  const input = scannedValue || document.getElementById("manual-input").value.trim();
+  const cpId = document.getElementById("scan-cp").value;
+  const result = document.getElementById("scan-result");
+
+  if (!cpId) {
+    result.textContent = "Please select a checkpoint first.";
+    result.className = "result-error";
+    return;
+  }
+
+  if (!input) {
+    result.textContent = "Please scan a QR code or enter a participant ID/name.";
+    result.className = "result-error";
+    return;
+  }
+
+  const participant = state.participants.find(p =>
+    p.id.toLowerCase() === input.toLowerCase() ||
+    p.name.toLowerCase() === input.toLowerCase()
+  );
+
+  if (!participant) {
+    result.textContent = "Participant not found.";
+    result.className = "result-error";
+    return;
+  }
+
+  const checkpoint = state.checkpoints.find(c => c.id === cpId);
+
+  const checkin = {
+    id: Date.now().toString(),
+    participantId: participant.id,
+    name: participant.name,
+    group: participant.group || "General",
+    checkpointId: cpId,
+    checkpoint: checkpoint ? checkpoint.name : "Unknown checkpoint",
+    time: new Date().toISOString()
   };
 
-  scan();
+  state.log.push(checkin);
+  localStorage.setItem("checkin_pro", JSON.stringify(state));
+
+  if (typeof saveCheckInToFirebase === "function") {
+    saveCheckInToFirebase(checkin);
+  }
+
+  if (typeof broadcastCheckIn === "function") {
+    broadcastCheckIn(checkin);
+  }
+
+  if (typeof renderDashboard === "function") renderDashboard();
+  if (typeof renderLog === "function") renderLog();
+
+  result.textContent = `Checked in: ${participant.name}`;
+  result.className = "result-success";
+
+  document.getElementById("manual-input").value = "";
 }
