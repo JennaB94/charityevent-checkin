@@ -11,6 +11,7 @@
     <!-- Firebase sync (loaded before main script so functions are available immediately) -->
     <script src="firebase-sync.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
@@ -1127,63 +1128,55 @@ function manualCheckin() {
   document.getElementById('manual-input').value = '';
 }
 
-async function performCheckin(participantId, cpId) {
-  const participant = state.participants.find(p => p.id === participantId);
-  const checkpoint = state.checkpoints.find(c => c.id === cpId);
+function performCheckin(participantId, cpId) {
+  const p = state.participants.find(x => x.id === participantId);
+  const cp = state.checkpoints.find(x => x.id === cpId);
 
-  if (!participant || !checkpoint) {
-    toast('Invalid participant or checkpoint.', 'error');
-    return;
-  }
+  if (!p) { toast('Participant not found.', 'error'); return; }
+  if (!cp) { toast('Checkpoint not found.', 'error'); return; }
 
-  const checkin = {
-    id: uid(),
-    participantId: participant.id,
-    name: participant.name,
-    email: participant.email,
-    group: participant.group,
-    cpId: checkpoint.id,
-    cpName: checkpoint.name,
-    time: new Date().toISOString()
-  };
+  state.log.push({
+    participantId: p.id,
+    participantName: p.name,
+    participantGroup: p.group,
+    checkpointId: cp.id,
+    checkpointName: cp.name,
+    timestamp: new Date().toISOString()
+  });
 
-  state.log.push(checkin);
-  await save();
+  save();
+  if (typeof logCheckinToFirebase === 'function') logCheckinToFirebase(participantId, cpId);
 
-  if (typeof saveCheckInToFirebase === 'function') {
-    saveCheckInToFirebase(checkin);
-  }
-  if (typeof broadcastCheckIn === 'function') {
-    broadcastCheckIn(checkin);
-  }
-
-  document.getElementById('scan-result').textContent = `✓ Checked in: ${participant.name}`;
+  document.getElementById('scan-result').textContent = '✓ ' + p.name + ' checked in at ' + cp.name;
   document.getElementById('scan-result').className = 'result-success';
 
-  setTimeout(() => {
-    document.getElementById('scan-result').textContent = 'Select a checkpoint and start scanning.';
-    document.getElementById('scan-result').className = 'result-info';
-  }, 3000);
+  // Show in recent scans
+  const recentList = document.getElementById('recent-list');
+  const recentScans = document.getElementById('recent-scans');
+  const entry = document.createElement('div');
+  entry.style.cssText = 'padding:8px;background:var(--surface2);border-radius:6px;font-size:13px;margin-bottom:8px;border-left:3px solid var(--accent3);';
+  entry.textContent = p.name + ' → ' + cp.name + ' (' + new Date().toLocaleTimeString() + ')';
+  recentList.insertBefore(entry, recentList.firstChild);
+  recentScans.style.display = 'block';
 
-  toast(`Checked in: ${participant.name}`, 'success');
-  renderDashboard();
+  toast('Check-in successful!', 'success');
 }
 
 // ═══════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════
 function renderDashboard() {
-  const totalCheckIns = state.log.length;
+  const totalCheckins = state.log.length;
   const uniqueParticipants = new Set(state.log.map(l => l.participantId)).size;
   const activeCheckpoints = state.checkpoints.length;
   const notCheckedIn = state.participants.length - uniqueParticipants;
 
-  document.getElementById('stat-total').textContent = totalCheckIns;
+  document.getElementById('stat-total').textContent = totalCheckins;
   document.getElementById('stat-unique').textContent = uniqueParticipants;
   document.getElementById('stat-checkpoints').textContent = activeCheckpoints;
   document.getElementById('stat-pending').textContent = notCheckedIn;
 
-  // Populate filter dropdown
+  // Populate checkpoint filter
   const filterCp = document.getElementById('filter-cp');
   filterCp.innerHTML = '<option value="">All Checkpoints</option>' +
     state.checkpoints.map(cp => `<option value="${cp.id}">${cp.name}</option>`).join('');
@@ -1192,91 +1185,92 @@ function renderDashboard() {
 }
 
 function renderLog() {
-  const cpFilter = (document.getElementById('filter-cp')?.value || '');
-  const nameFilter = (document.getElementById('filter-name')?.value || '').toLowerCase();
+  const filterCp = document.getElementById('filter-cp').value;
+  const filterName = (document.getElementById('filter-name')?.value || '').toLowerCase();
+  
+  const filtered = state.log.filter(entry =>
+    (!filterCp || entry.checkpointId === filterCp) &&
+    (entry.participantName.toLowerCase().includes(filterName) || 
+     entry.participantGroup.toLowerCase().includes(filterName))
+  );
+
   const tbody = document.getElementById('log-tbody');
-
-  let filtered = state.log;
-  if (cpFilter) filtered = filtered.filter(l => l.cpId === cpFilter);
-  if (nameFilter) filtered = filtered.filter(l => l.name.toLowerCase().includes(nameFilter));
-
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No check-ins recorded yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No check-ins recorded.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = filtered.map((l, i) => {
-    const time = new Date(l.time);
-    const timeStr = time.toLocaleString();
-    return `<tr>
-      <td>${i + 1}</td>
-      <td>${l.name}</td>
-      <td><span class="tag tag-blue">${l.group}</span></td>
-      <td>${l.cpName}</td>
-      <td>${timeStr}</td>
-      <td><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">${l.participantId}</span></td>
-    </tr>`;
-  }).join('');
+  tbody.innerHTML = filtered.map((entry, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${entry.participantName}</td>
+      <td>${entry.participantGroup}</td>
+      <td>${entry.checkpointName}</td>
+      <td>${new Date(entry.timestamp).toLocaleString()}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;">${entry.participantId}</td>
+    </tr>
+  `).join('');
 }
 
 function exportCSV() {
+  if (!state.log.length) { toast('No check-ins to export.', 'error'); return; }
+
   const headers = ['#', 'Name', 'Group', 'Checkpoint', 'Time', 'ID'];
-  const rows = state.log.map((l, i) => [
-    i + 1,
-    l.name,
-    l.group,
-    l.cpName,
-    new Date(l.time).toLocaleString(),
-    l.participantId
+  const rows = state.log.map((entry, idx) => [
+    idx + 1,
+    entry.participantName,
+    entry.participantGroup,
+    entry.checkpointName,
+    new Date(entry.timestamp).toLocaleString(),
+    entry.participantId
   ]);
 
-  const csv = [headers, ...rows].map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+  const csv = [headers, ...rows].map(row => 
+    row.map(cell => {
+      if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
+        return '"' + cell.replace(/"/g, '""') + '"';
+      }
+      return cell;
+    }).join(',')
+  ).join('\n');
+
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = 'checkin_log_' + Date.now() + '.csv';
+  a.href = URL.createObjectURL(blob);
+  a.download = 'checkin_log_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
   toast('Log exported!', 'success');
 }
 
 function clearLog() {
-  if (!confirm('Clear all check-in logs? This cannot be undone.')) return;
+  if (!confirm('Delete ALL check-in records? This cannot be undone.')) return;
   state.log = [];
   save();
-  if (typeof clearCheckInsFromFirebase === 'function') {
-    clearCheckInsFromFirebase();
-  }
+  if (typeof clearLogFromFirebase === 'function') clearLogFromFirebase();
   renderDashboard();
   toast('Log cleared.', 'success');
 }
 
 // ═══════════════════════════════════════
-// UI HELPERS
+// TOAST
 // ═══════════════════════════════════════
-function toast(message, type = 'info') {
+function toast(msg, type = 'info') {
   const el = document.getElementById('toast');
-  el.textContent = message;
+  el.textContent = msg;
   el.className = 'show';
-  if (type === 'error') el.style.borderColor = 'var(--accent2)';
-  else if (type === 'success') el.style.borderColor = 'var(--accent3)';
-  else el.style.borderColor = 'var(--border)';
-
+  if (type === 'success') el.style.background = 'rgba(67,233,123,0.15)';
+  else if (type === 'error') el.style.background = 'rgba(255,107,107,0.15)';
+  else el.style.background = 'var(--surface)';
+  
   setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-// Load state on page load
-document.addEventListener('DOMContentLoaded', () => {
-  load();
-  if (state.event) {
-    document.getElementById('event-name').value = state.event.name || '';
-    document.getElementById('event-date').value = state.event.date || '';
-    document.getElementById('event-desc').value = state.event.desc || '';
-    document.getElementById('event-name-display').textContent = state.event.name || '';
-  }
-  renderCheckpoints();
-  renderParticipants();
-});
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+load();
+if (state.event) document.getElementById('event-name-display').textContent = state.event.name;
+renderCheckpoints();
 </script>
 </body>
 </html>
